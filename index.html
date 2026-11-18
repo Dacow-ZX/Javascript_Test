@@ -1,20 +1,1092 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2D Platformer Engine & Demo</title>
+    <!-- Tailwind CSS for clean HUD & Inspector UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+        /* Custom range slider styling for the Inspector */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: #334155;
+            height: 6px;
+            border-radius: 999px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col relative">
 
-    <canvas id="main" width="1920" height="1200"></canvas>
+    <!-- Main Game Canvas Container -->
+    <div id="canvas-container" class="relative w-full h-full flex-1 bg-slate-950">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Top HUD Overlay -->
+        <div class="absolute top-4 left-4 right-4 flex flex-wrap items-start justify-between pointer-events-none gap-3">
+            <!-- Score & Level Status Pill -->
+            <div class="flex items-center gap-4 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 px-4 py-2.5 rounded-xl shadow-lg pointer-events-auto">
+                <div class="flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]"></span>
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Gems</span>
+                    <span id="hud-score" class="font-mono font-bold text-lg text-amber-300">0 / 0</span>
+                </div>
+                <div class="h-5 w-px bg-slate-700"></div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Status</span>
+                    <span id="hud-status" class="font-mono text-sm font-semibold text-emerald-400">ACTIVE</span>
+                </div>
+            </div>
+
+            <!-- Action Controls (Restart & Debug Inspector Toggle) -->
+            <div class="flex items-center gap-2 pointer-events-auto">
+                <button id="btn-restart" class="bg-slate-900/85 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-slate-700/80 text-slate-200 px-3.5 py-2 rounded-xl text-sm font-medium transition shadow-lg flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span>Restart <kbd class="hidden sm:inline-block ml-1 text-xs bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 border border-slate-700">R</kbd></span>
+                </button>
+                <button id="btn-debug" class="bg-slate-900/85 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-slate-700/80 text-slate-200 px-3.5 py-2 rounded-xl text-sm font-medium transition shadow-lg flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                    <span>Inspector <kbd class="hidden sm:inline-block ml-1 text-xs bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 border border-slate-700">D</kbd></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Toggleable Engine Inspector / Debug Panel -->
+        <div id="debug-panel" class="hidden absolute top-20 right-4 w-72 sm:w-80 bg-slate-900/90 backdrop-blur-md border border-slate-700/90 rounded-2xl p-4 shadow-2xl text-xs space-y-4 z-20">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span class="font-semibold text-sm text-purple-300 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+                    Engine Inspector
+                </span>
+                <button id="btn-reset-params" class="text-slate-400 hover:text-sky-400 underline transition">Reset Defaults</button>
+            </div>
+
+            <!-- Live Telemetry -->
+            <div class="bg-slate-950/70 rounded-xl p-2.5 border border-slate-800/80 font-mono space-y-1 text-[11px]">
+                <div class="flex justify-between"><span class="text-slate-400">Pos (X, Y):</span> <span id="dbg-pos" class="text-slate-200">0, 0</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Vel (VX, VY):</span> <span id="dbg-vel" class="text-sky-300">0, 0</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Grounded:</span> <span id="dbg-grounded" class="text-emerald-400">false</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Coyote Timer:</span> <span id="dbg-coyote" class="text-amber-300">0.00s</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Jump Buffer:</span> <span id="dbg-buffer" class="text-pink-300">0.00s</span></div>
+            </div>
+
+            <!-- Real-time Physics Parameters -->
+            <div class="space-y-3">
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-slate-300 font-medium">Gravity (px/s²)</label>
+                        <span id="val-gravity" class="font-mono text-sky-400">1800</span>
+                    </div>
+                    <input type="range" id="slider-gravity" min="400" max="3500" step="50" value="1800" class="w-full">
+                </div>
+
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-slate-300 font-medium">Jump Force (px/s)</label>
+                        <span id="val-jump" class="font-mono text-sky-400">680</span>
+                    </div>
+                    <input type="range" id="slider-jump" min="300" max="1200" step="20" value="680" class="w-full">
+                </div>
+
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-slate-300 font-medium">Max Move Speed (px/s)</label>
+                        <span id="val-speed" class="font-mono text-sky-400">340</span>
+                    </div>
+                    <input type="range" id="slider-speed" min="150" max="700" step="10" value="340" class="w-full">
+                </div>
+            </div>
+
+            <div class="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex items-center justify-between">
+                <span>Hitboxes & Vectors: <strong class="text-emerald-400">ON</strong></span>
+                <span>Fixed dt: <strong class="text-slate-200">1/60s</strong></span>
+            </div>
+        </div>
+
+        <!-- Level Complete / Game Over Modal Overlay (Replaces alert()) -->
+        <div id="state-banner" class="hidden absolute inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-30">
+            <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl space-y-4">
+                <div id="banner-icon" class="w-12 h-12 rounded-full mx-auto flex items-center justify-center text-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">★</div>
+                <h2 id="banner-title" class="text-xl font-bold text-white">Stage Cleared!</h2>
+                <p id="banner-desc" class="text-sm text-slate-300">You reached the portal and collected all gems.</p>
+                <button id="btn-banner-restart" class="w-full py-2.5 px-4 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 font-semibold rounded-xl transition shadow-lg">
+                    Play Again
+                </button>
+            </div>
+        </div>
+
+        <!-- Bottom Controls Hint (Desktop) -->
+        <div class="hidden md:flex absolute bottom-4 left-4 bg-slate-900/75 backdrop-blur-md border border-slate-800 px-3.5 py-2 rounded-xl text-xs text-slate-400 items-center gap-4 pointer-events-none">
+            <span><kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">A</kbd> <kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">D</kbd> or <kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">←</kbd> <kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">→</kbd> Move</span>
+            <span><kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">W</kbd> / <kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">Space</kbd> / <kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">↑</kbd> Jump</span>
+        </div>
+
+        <!-- Touch Controls (Mobile / Tablet) -->
+        <div class="md:hidden absolute bottom-5 left-4 right-4 flex justify-between items-center pointer-events-none z-20">
+            <div class="flex gap-3 pointer-events-auto">
+                <button id="touch-left" class="w-14 h-14 rounded-2xl bg-slate-900/80 active:bg-sky-500/40 border border-slate-700 flex items-center justify-center text-white shadow-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <button id="touch-right" class="w-14 h-14 rounded-2xl bg-slate-900/80 active:bg-sky-500/40 border border-slate-700 flex items-center justify-center text-white shadow-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+            <button id="touch-jump" class="w-16 h-14 rounded-2xl bg-sky-500/80 active:bg-sky-400 border border-sky-300/50 flex items-center justify-center text-slate-950 font-bold text-sm shadow-lg pointer-events-auto">
+                JUMP
+            </button>
+        </div>
+    </div>
+
     <script>
-        var c = document.getElementById("main");
-        var ctx = c.getContext("2d");
-        var pos = 0
-        const icon = new Image();
-        sprite.src = 'icon.png';
+        /**
+         * ============================================================================
+         * 1. CORE MATH & UTILITY CLASSES
+         * ============================================================================
+         */
+        class Vector2 {
+            constructor(x = 0, y = 0) {
+                this.x = x;
+                this.y = y;
+            }
+            set(x, y) { this.x = x; this.y = y; return this; }
+            copy(v) { this.x = v.x; this.y = v.y; return this; }
+            clone() { return new Vector2(this.x, this.y); }
+        }
 
-        sprite.onload = () => {
-            ctx.drawImage(icon, 100, 150);
+        /**
+         * Axis-Aligned Bounding Box (AABB) utility for overlap checks.
+         */
+        class AABB {
+            static overlaps(a, b) {
+                return (
+                    a.pos.x < b.pos.x + b.size.x &&
+                    a.pos.x + a.size.x > b.pos.x &&
+                    a.pos.y < b.pos.y + b.size.y &&
+                    a.pos.y + a.size.y > b.pos.y
+                );
+            }
+        }
 
-            ctx.drawImage(icon, 100, 150, 64, 64);
+        /**
+         * ============================================================================
+         * 2. INPUT MANAGER (Keyboard + Touch)
+         * ============================================================================
+         */
+        class InputManager {
+            constructor() {
+                this.keys = {};
+                this.justPressed = {};
+                this._bindEvents();
+            }
+
+            _bindEvents() {
+                window.addEventListener('keydown', (e) => {
+                    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                        e.preventDefault();
+                    }
+                    if (!this.keys[e.code]) {
+                        this.justPressed[e.code] = true;
+                    }
+                    this.keys[e.code] = true;
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    this.keys[e.code] = false;
+                });
+
+                // Touch control bindings
+                const bindTouch = (id, code) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    el.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        if (!this.keys[code]) this.justPressed[code] = true;
+                        this.keys[code] = true;
+                    }, { passive: false });
+                    el.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        this.keys[code] = false;
+                    }, { passive: false });
+                };
+
+                bindTouch('touch-left', 'ArrowLeft');
+                bindTouch('touch-right', 'ArrowRight');
+                bindTouch('touch-jump', 'Space');
+            }
+
+            isDown(codes) {
+                return codes.some(code => !!this.keys[code]);
+            }
+
+            wasPressed(codes) {
+                return codes.some(code => !!this.justPressed[code]);
+            }
+
+            endFrame() {
+                this.justPressed = {};
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 3. PARTICLE SYSTEM (Visual Feedback)
+         * ============================================================================
+         */
+        class Particle {
+            constructor(x, y, vx, vy, size, color, life) {
+                this.pos = new Vector2(x, y);
+                this.vel = new Vector2(vx, vy);
+                this.size = size;
+                this.color = color;
+                this.life = life;
+                this.maxLife = life;
+            }
+
+            update(dt) {
+                this.pos.x += this.vel.x * dt;
+                this.pos.y += this.vel.y * dt;
+                this.vel.y += 400 * dt; // Slight gravity on particles
+                this.life -= dt;
+            }
+
+            draw(ctx) {
+                const alpha = Math.max(0, this.life / this.maxLife);
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.roundRect(this.pos.x - this.size / 2, this.pos.y - this.size / 2, this.size, this.size, 3);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 4. WORLD ENTITIES (Base Entity, Platform, Hazard, Collectible, Goal, Player)
+         * ============================================================================
+         */
+        class Entity {
+            constructor(x, y, w, h, type = 'entity') {
+                this.pos = new Vector2(x, y);
+                this.size = new Vector2(w, h);
+                this.vel = new Vector2(0, 0);
+                this.type = type;
+                this.active = true;
+            }
+
+            get center() {
+                return new Vector2(this.pos.x + this.size.x / 2, this.pos.y + this.size.y / 2);
+            }
+
+            update(dt) {}
+            draw(ctx) {}
+
+            drawDebug(ctx) {
+                ctx.save();
+                ctx.strokeStyle = this.type === 'hazard' ? '#f43f5e' : (this.type === 'player' ? '#38bdf8' : '#22c55e');
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(this.pos.x, this.pos.y, this.size.x, this.size.y);
+                ctx.restore();
+            }
+        }
+
+        class Platform extends Entity {
+            constructor(x, y, w, h, options = {}) {
+                super(x, y, w, h, options.bouncy ? 'bouncy' : 'platform');
+                this.startPos = new Vector2(x, y);
+                this.moveOffset = options.moveOffset || new Vector2(0, 0);
+                this.moveSpeed = options.moveSpeed || 0;
+                this.bouncy = !!options.bouncy;
+                this.bounceForce = options.bounceForce || 1050;
+                this.timer = 0;
+                this.deltaPos = new Vector2(0, 0); // Track frame displacement for carrying player
+            }
+
+            update(dt) {
+                if (this.moveSpeed > 0) {
+                    const prevX = this.pos.x;
+                    const prevY = this.pos.y;
+                    this.timer += dt * this.moveSpeed;
+                    const factor = (Math.sin(this.timer) + 1) / 2; // Smooth 0 -> 1 oscillation
+                    this.pos.x = this.startPos.x + this.moveOffset.x * factor;
+                    this.pos.y = this.startPos.y + this.moveOffset.y * factor;
+                    this.deltaPos.set(this.pos.x - prevX, this.pos.y - prevY);
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                if (this.bouncy) {
+                    // Bouncy jump pad styling
+                    ctx.fillStyle = '#ec4899';
+                    ctx.beginPath();
+                    ctx.roundRect(this.pos.x, this.pos.y, this.size.x, this.size.y, 6);
+                    ctx.fill();
+                    ctx.fillStyle = '#fbcfe8';
+                    ctx.fillRect(this.pos.x + 4, this.pos.y + 2, this.size.x - 8, 4);
+                } else {
+                    // Modern slate tile block with top grass/neon rim
+                    ctx.fillStyle = '#1e293b';
+                    ctx.beginPath();
+                    ctx.roundRect(this.pos.x, this.pos.y, this.size.x, this.size.y, 6);
+                    ctx.fill();
+
+                    ctx.strokeStyle = '#334155';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    // Top highlight trim
+                    ctx.fillStyle = this.moveSpeed > 0 ? '#a855f7' : '#38bdf8';
+                    ctx.beginPath();
+                    ctx.roundRect(this.pos.x + 2, this.pos.y + 1, this.size.x - 4, 4, 3);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        class Hazard extends Entity {
+            constructor(x, y, w, h) {
+                super(x, y, w, h, 'hazard');
+            }
+
+            draw(ctx) {
+                ctx.save();
+                const spikeWidth = 16;
+                const count = Math.max(1, Math.floor(this.size.x / spikeWidth));
+                const step = this.size.x / count;
+
+                ctx.fillStyle = '#f43f5e';
+                for (let i = 0; i < count; i++) {
+                    const sx = this.pos.x + i * step;
+                    ctx.beginPath();
+                    ctx.moveTo(sx, this.pos.y + this.size.y);
+                    ctx.lineTo(sx + step / 2, this.pos.y);
+                    ctx.lineTo(sx + step, this.pos.y + this.size.y);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        class Gem extends Entity {
+            constructor(x, y) {
+                super(x, y, 20, 20, 'gem');
+                this.baseY = y;
+                this.bobTimer = Math.random() * Math.PI * 2;
+            }
+
+            update(dt) {
+                if (!this.active) return;
+                this.bobTimer += dt * 4;
+                this.pos.y = this.baseY + Math.sin(this.bobTimer) * 5;
+            }
+
+            draw(ctx) {
+                if (!this.active) return;
+                const c = this.center;
+                ctx.save();
+                ctx.translate(c.x, c.y);
+                ctx.fillStyle = '#fbbf24';
+                ctx.shadowColor = '#f59e0b';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.moveTo(0, -10);
+                ctx.lineTo(9, 0);
+                ctx.lineTo(0, 10);
+                ctx.lineTo(-9, 0);
+                ctx.closePath();
+                ctx.fill();
+
+                // Inner shine
+                ctx.fillStyle = '#fef3c7';
+                ctx.beginPath();
+                ctx.moveTo(0, -5);
+                ctx.lineTo(4, 0);
+                ctx.lineTo(0, 5);
+                ctx.lineTo(-4, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class GoalPortal extends Entity {
+            constructor(x, y) {
+                super(x, y, 36, 56, 'goal');
+                this.pulse = 0;
+            }
+
+            update(dt) {
+                this.pulse += dt * 3;
+            }
+
+            draw(ctx) {
+                const c = this.center;
+                ctx.save();
+                // Outer glowing aura
+                const radiusX = 18 + Math.sin(this.pulse) * 2;
+                const radiusY = 28 + Math.cos(this.pulse) * 2;
+
+                ctx.strokeStyle = '#10b981';
+                ctx.lineWidth = 4;
+                ctx.shadowColor = '#10b981';
+                ctx.shadowBlur = 16;
+                ctx.beginPath();
+                ctx.ellipse(c.x, c.y, radiusX, radiusY, 0, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.22)';
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 5. PLAYER CONTROLLER (Physics, Coyote Time, Jump Buffering, Separated AABB)
+         * ============================================================================
+         */
+        class Player extends Entity {
+            constructor(x, y, config) {
+                super(x, y, 28, 38, 'player');
+                this.config = config;
+
+                // State flags
+                this.grounded = false;
+                this.standingOn = null;
+                this.facing = 1; // 1 = right, -1 = left
+
+                // Forgiveness timers (in seconds)
+                this.coyoteTimeMax = 0.12;
+                this.coyoteTimer = 0;
+
+                this.jumpBufferMax = 0.14;
+                this.jumpBufferTimer = 0;
+
+                // Visual squash & stretch
+                this.scale = new Vector2(1, 1);
+            }
+
+            update(dt, input, platforms, emitParticles) {
+                // 1. Horizontal Input & Acceleration/Friction
+                const moveLeft = input.isDown(['ArrowLeft', 'KeyA']);
+                const moveRight = input.isDown(['ArrowRight', 'KeyD']);
+                const moveDir = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0);
+
+                if (moveDir !== 0) {
+                    this.facing = moveDir;
+                    const accel = this.grounded ? this.config.groundAccel : this.config.airAccel;
+                    this.vel.x += moveDir * accel * dt;
+                    // Clamp to max horizontal speed
+                    if (Math.abs(this.vel.x) > this.config.moveSpeed) {
+                        this.vel.x = moveDir * this.config.moveSpeed;
+                    }
+                } else {
+                    // Apply friction when no directional key is held
+                    const friction = this.grounded ? this.config.groundFriction : this.config.airFriction;
+                    const drop = friction * dt;
+                    if (Math.abs(this.vel.x) <= drop) {
+                        this.vel.x = 0;
+                    } else {
+                        this.vel.x -= Math.sign(this.vel.x) * drop;
+                    }
+                }
+
+                // 2. Carry player with moving platform if standing on one
+                if (this.grounded && this.standingOn && this.standingOn.moveSpeed > 0) {
+                    this.pos.x += this.standingOn.deltaPos.x;
+                    this.pos.y += this.standingOn.deltaPos.y;
+                }
+
+                // 3. Coyote Time & Jump Buffering Timers
+                if (this.grounded) {
+                    this.coyoteTimer = this.coyoteTimeMax;
+                } else {
+                    this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
+                }
+
+                if (input.wasPressed(['Space', 'ArrowUp', 'KeyW'])) {
+                    this.jumpBufferTimer = this.jumpBufferMax;
+                } else {
+                    this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - dt);
+                }
+
+                // Execute jump if buffered and within coyote window
+                if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
+                    this.vel.y = -this.config.jumpForce;
+                    this.grounded = false;
+                    this.standingOn = null;
+                    this.coyoteTimer = 0;
+                    this.jumpBufferTimer = 0;
+                    this.scale.set(0.78, 1.25); // Stretch on jump
+                    emitParticles(this.pos.x + this.size.x / 2, this.pos.y + this.size.y, 6, '#94a3b8');
+                }
+
+                // Variable jump height (cut upward velocity if jump button released early)
+                if (!input.isDown(['Space', 'ArrowUp', 'KeyW']) && this.vel.y < -200) {
+                    this.vel.y *= 0.65;
+                }
+
+                // 4. Apply Gravity
+                this.vel.y += this.config.gravity * dt;
+                this.vel.y = Math.min(this.vel.y, this.config.maxFallSpeed);
+
+                // 5. Separated Axis Collision Resolution (Prevents corner snagging!)
+                // --- Step A: Move & Resolve X-axis ---
+                this.pos.x += this.vel.x * dt;
+                this._resolveCollisionsX(platforms);
+
+                // --- Step B: Move & Resolve Y-axis ---
+                const wasGrounded = this.grounded;
+                this.grounded = false;
+                this.standingOn = null;
+
+                this.pos.y += this.vel.y * dt;
+                this._resolveCollisionsY(platforms, wasGrounded, emitParticles);
+
+                // Recover squash & stretch smoothly back to (1, 1)
+                this.scale.x += (1 - this.scale.x) * Math.min(1, dt * 15);
+                this.scale.y += (1 - this.scale.y) * Math.min(1, dt * 15);
+            }
+
+            _resolveCollisionsX(platforms) {
+                for (const plat of platforms) {
+                    if (AABB.overlaps(this, plat)) {
+                        if (this.vel.x > 0) {
+                            this.pos.x = plat.pos.x - this.size.x;
+                            this.vel.x = 0;
+                        } else if (this.vel.x < 0) {
+                            this.pos.x = plat.pos.x + plat.size.x;
+                            this.vel.x = 0;
+                        }
+                    }
+                }
+            }
+
+            _resolveCollisionsY(platforms, wasGrounded, emitParticles) {
+                for (const plat of platforms) {
+                    if (AABB.overlaps(this, plat)) {
+                        if (this.vel.y > 0) {
+                            // Landed on top of platform
+                            this.pos.y = plat.pos.y - this.size.y;
+
+                            if (plat.bouncy) {
+                                // Trigger bouncy pad impulse
+                                this.vel.y = -plat.bounceForce;
+                                this.grounded = false;
+                                this.scale.set(0.7, 1.35);
+                                emitParticles(this.pos.x + this.size.x / 2, this.pos.y + this.size.y, 10, '#f472b6');
+                            } else {
+                                if (!wasGrounded && this.vel.y > 180) {
+                                    this.scale.set(1.25, 0.78); // Squash on landing
+                                    emitParticles(this.pos.x + this.size.x / 2, this.pos.y + this.size.y, 5, '#cbd5e1');
+                                }
+                                this.vel.y = 0;
+                                this.grounded = true;
+                                this.standingOn = plat;
+                            }
+                        } else if (this.vel.y < 0) {
+                            // Hit head on ceiling
+                            this.pos.y = plat.pos.y + plat.size.y;
+                            this.vel.y = 0;
+                        }
+                    }
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                // Anchor transformations at bottom-center of player for squash & stretch
+                const anchorX = this.pos.x + this.size.x / 2;
+                const anchorY = this.pos.y + this.size.y;
+                ctx.translate(anchorX, anchorY);
+                ctx.scale(this.scale.x, this.scale.y);
+
+                // Player body
+                ctx.fillStyle = '#38bdf8';
+                ctx.beginPath();
+                ctx.roundRect(-this.size.x / 2, -this.size.y, this.size.x, this.size.y, 7);
+                ctx.fill();
+
+                // Visor / Eyes indicating facing direction
+                ctx.fillStyle = '#0f172a';
+                const eyeOffsetX = this.facing === 1 ? 2 : -12;
+                ctx.beginPath();
+                ctx.roundRect(eyeOffsetX, -this.size.y + 9, 10, 7, 3);
+                ctx.fill();
+
+                // Glowing eye pupil
+                ctx.fillStyle = '#f8fafc';
+                const pupilX = this.facing === 1 ? eyeOffsetX + 6 : eyeOffsetX + 2;
+                ctx.fillRect(pupilX, -this.size.y + 11, 2, 3);
+
+                ctx.restore();
+            }
+
+            drawDebug(ctx) {
+                super.drawDebug(ctx);
+                // Draw velocity vector arrow from center
+                const c = this.center;
+                ctx.save();
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(c.x, c.y);
+                ctx.lineTo(c.x + this.vel.x * 0.15, c.y + this.vel.y * 0.15);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 6. CAMERA SYSTEM (Smooth Damping & Level Boundary Clamping)
+         * ============================================================================
+         */
+        class Camera {
+            constructor(viewportWidth, viewportHeight, levelBounds) {
+                this.pos = new Vector2(0, 0);
+                this.viewport = new Vector2(viewportWidth, viewportHeight);
+                this.bounds = levelBounds; // { width, height }
+                this.smoothSpeed = 8.5;
+            }
+
+            resize(w, h) {
+                this.viewport.set(w, h);
+            }
+
+            follow(target, dt) {
+                // Desired camera position centers the target
+                let targetX = target.center.x - this.viewport.x / 2;
+                let targetY = target.center.y - this.viewport.y / 2;
+
+                // Clamp camera within level boundaries
+                const maxX = Math.max(0, this.bounds.width - this.viewport.x);
+                const maxY = Math.max(0, this.bounds.height - this.viewport.y);
+                targetX = Math.max(0, Math.min(targetX, maxX));
+                targetY = Math.max(0, Math.min(targetY, maxY));
+
+                // Exponential smoothing (frame-rate independent lerp)
+                const t = 1 - Math.exp(-this.smoothSpeed * dt);
+                this.pos.x += (targetX - this.pos.x) * t;
+                this.pos.y += (targetY - this.pos.y) * t;
+            }
+
+            applyTransform(ctx) {
+                ctx.translate(-Math.round(this.pos.x), -Math.round(this.pos.y));
+            }
+        }
+
+        /**
+         * ============================================================================
+         * 7. MAIN ENGINE & LEVEL CONTROLLER (Fixed-Timestep Loop + Inspector Sync)
+         * ============================================================================
+         */
+        class PlatformerEngine {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.input = new InputManager();
+
+                // Default Tunable Engine Physics Parameters
+                this.defaultConfig = {
+                    gravity: 1800,
+                    jumpForce: 680,
+                    moveSpeed: 340,
+                    groundAccel: 2600,
+                    airAccel: 1800,
+                    groundFriction: 2400,
+                    airFriction: 600,
+                    maxFallSpeed: 950
+                };
+                this.config = { ...this.defaultConfig };
+
+                // Fixed Timestep Settings (60 Hz physics simulation)
+                this.fixedDt = 1 / 60;
+                this.accumulator = 0;
+                this.lastTime = 0;
+
+                // Engine State
+                this.debugMode = false;
+                this.gameState = 'playing'; // 'playing' | 'won' | 'dead'
+                this.score = 0;
+                this.totalGems = 0;
+
+                // Level Dimensions
+                this.levelBounds = { width: 2200, height: 900 };
+                this.camera = new Camera(window.innerWidth, window.innerHeight, this.levelBounds);
+
+                this.platforms = [];
+                this.hazards = [];
+                this.gems = [];
+                this.particles = [];
+                this.goal = null;
+                this.player = null;
+
+                this._bindUI();
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.loadDemoLevel();
+            }
+
+            resize() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+                this.camera.resize(rect.width, rect.height);
+            }
+
+            loadDemoLevel() {
+                this.gameState = 'playing';
+                this.score = 0;
+                this.particles = [];
+                document.getElementById('state-banner').classList.add('hidden');
+                this._updateHUD('ACTIVE', 'text-emerald-400');
+
+                // Spawn Player
+                this.player = new Player(90, 620, this.config);
+
+                // Build Level Geometry (Walls, Ground, Floating & Moving Platforms, Bouncy Pads)
+                this.platforms = [
+                    // Outer Boundary Walls & Ceiling
+                    new Platform(0, 0, 32, 900),
+                    new Platform(2168, 0, 32, 900),
+                    new Platform(0, 0, 2200, 32),
+
+                    // Starting Floor & Steps
+                    new Platform(32, 740, 460, 160),
+                    new Platform(260, 660, 110, 80),
+
+                    // Gap + Floating Platforms
+                    new Platform(560, 680, 160, 24),
+                    new Platform(790, 610, 160, 24),
+
+                    // Bouncy Pad Section
+                    new Platform(1020, 740, 240, 160),
+                    new Platform(1100, 724, 64, 16, { bouncy: true, bounceForce: 1020 }),
+
+                    // High Upper Ledge & Moving Horizontal Platform
+                    new Platform(1260, 440, 180, 24),
+                    new Platform(1500, 440, 130, 24, {
+                        moveOffset: new Vector2(180, 0),
+                        moveSpeed: 2.0
+                    }),
+
+                    // Vertical Elevator Platform & Final Goal Terrace
+                    new Platform(1860, 560, 110, 24, {
+                        moveOffset: new Vector2(0, -210),
+                        moveSpeed: 1.8
+                    }),
+                    new Platform(2010, 320, 158, 580)
+                ];
+
+                // Pit Hazards & Spike Traps
+                this.hazards = [
+                    new Hazard(492, 868, 528, 32),  // Pit 1 spikes
+                    new Hazard(1260, 868, 750, 32), // Pit 2 spikes
+                    new Hazard(1310, 422, 64, 18)   // Ledge hazard
+                ];
+
+                // Collectible Gems
+                this.gems = [
+                    new Gem(305, 615),
+                    new Gem(630, 635),
+                    new Gem(860, 565),
+                    new Gem(1122, 480),
+                    new Gem(1340, 370),
+                    new Gem(1630, 390),
+                    new Gem(1905, 310)
+                ];
+                this.totalGems = this.gems.length;
+
+                // Goal Portal
+                this.goal = new GoalPortal(2075, 250);
+
+                // Snap camera immediately on reset
+                this.camera.pos.set(0, Math.max(0, 740 - this.camera.viewport.y * 0.7));
+                this._updateScoreHUD();
+            }
+
+            emitParticles(x, y, count, color) {
+                for (let i = 0; i < count; i++) {
+                    const angle = -Math.PI * Math.random();
+                    const speed = 60 + Math.random() * 140;
+                    this.particles.push(new Particle(
+                        x, y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed - 40,
+                        4 + Math.random() * 4,
+                        color,
+                        0.3 + Math.random() * 0.25
+                    ));
+                }
+            }
+
+            stepPhysics(dt) {
+                if (this.gameState !== 'playing') return;
+
+                // Update moving platforms & collectibles
+                for (const plat of this.platforms) plat.update(dt);
+                for (const gem of this.gems) gem.update(dt);
+                this.goal.update(dt);
+
+                // Update player physics & platform collisions
+                this.player.update(dt, this.input, this.platforms, (x, y, c, col) => this.emitParticles(x, y, c, col));
+
+                // Check gem pickups
+                for (const gem of this.gems) {
+                    if (gem.active && AABB.overlaps(this.player, gem)) {
+                        gem.active = false;
+                        this.score++;
+                        this._updateScoreHUD();
+                        this.emitParticles(gem.center.x, gem.center.y, 12, '#fbbf24');
+                    }
+                }
+
+                // Check hazard collisions or out-of-bounds fall
+                for (const haz of this.hazards) {
+                    if (AABB.overlaps(this.player, haz)) {
+                        this._triggerEndState('dead');
+                        return;
+                    }
+                }
+                if (this.player.pos.y > this.levelBounds.height + 50) {
+                    this._triggerEndState('dead');
+                    return;
+                }
+
+                // Check goal portal completion
+                if (AABB.overlaps(this.player, this.goal)) {
+                    this._triggerEndState('won');
+                }
+            }
+
+            _triggerEndState(state) {
+                this.gameState = state;
+                const banner = document.getElementById('state-banner');
+                const icon = document.getElementById('banner-icon');
+                const title = document.getElementById('banner-title');
+                const desc = document.getElementById('banner-desc');
+
+                banner.classList.remove('hidden');
+                if (state === 'won') {
+                    this._updateHUD('CLEARED', 'text-emerald-400');
+                    icon.textContent = '★';
+                    icon.className = 'w-12 h-12 rounded-full mx-auto flex items-center justify-center text-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                    title.textContent = 'Stage Cleared!';
+                    desc.textContent = `Portal reached with ${this.score} of ${this.totalGems} gems collected.`;
+                    this.emitParticles(this.player.center.x, this.player.center.y, 25, '#10b981');
+                } else {
+                    this._updateHUD('DEFEATED', 'text-rose-400');
+                    icon.textContent = '✕';
+                    icon.className = 'w-12 h-12 rounded-full mx-auto flex items-center justify-center text-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30';
+                    title.textContent = 'Hazard Hit!';
+                    desc.textContent = 'Watch out for spikes and pits. Press R to try again.';
+                    this.emitParticles(this.player.center.x, this.player.center.y, 25, '#f43f5e');
+                }
+            }
+
+            render() {
+                const ctx = this.ctx;
+                ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Subtle Parallax Background Grid
+                this._drawBackgroundGrid(ctx);
+
+                ctx.save();
+                this.camera.applyTransform(ctx);
+
+                // Render World Entities
+                this.goal.draw(ctx);
+                for (const plat of this.platforms) plat.draw(ctx);
+                for (const haz of this.hazards) haz.draw(ctx);
+                for (const gem of this.gems) gem.draw(ctx);
+
+                if (this.gameState !== 'dead') {
+                    this.player.draw(ctx);
+                }
+
+                // Render Particles
+                for (const p of this.particles) p.draw(ctx);
+
+                // Render Debug AABB Hitboxes & Velocity Vectors if Inspector is open
+                if (this.debugMode) {
+                    for (const plat of this.platforms) plat.drawDebug(ctx);
+                    for (const haz of this.hazards) haz.drawDebug(ctx);
+                    for (const gem of this.gems) if (gem.active) gem.drawDebug(ctx);
+                    this.goal.drawDebug(ctx);
+                    if (this.gameState !== 'dead') this.player.drawDebug(ctx);
+                }
+
+                ctx.restore();
+            }
+
+            _drawBackgroundGrid(ctx) {
+                const gridSize = 64;
+                const parallaxX = -(this.camera.pos.x * 0.3) % gridSize;
+                const parallaxY = -(this.camera.pos.y * 0.3) % gridSize;
+
+                ctx.save();
+                ctx.strokeStyle = 'rgba(30, 41, 59, 0.55)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let x = parallaxX; x < this.canvas.width; x += gridSize) {
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, this.canvas.height);
+                }
+                for (let y = parallaxY; y < this.canvas.height; y += gridSize) {
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(this.canvas.width, y);
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            loop(timestamp) {
+                if (!this.lastTime) this.lastTime = timestamp;
+                // Clamp frame delta to prevent spiral of death when switching browser tabs
+                const frameDt = Math.min(0.05, (timestamp - this.lastTime) / 1000);
+                this.lastTime = timestamp;
+
+                // Global hotkeys
+                if (this.input.wasPressed(['KeyR'])) {
+                    this.loadDemoLevel();
+                }
+                if (this.input.wasPressed(['KeyD'])) {
+                    this._toggleDebugPanel();
+                }
+
+                // Fixed-timestep physics accumulator
+                this.accumulator += frameDt;
+                while (this.accumulator >= this.fixedDt) {
+                    this.stepPhysics(this.fixedDt);
+                    this.accumulator -= this.fixedDt;
+                }
+
+                // Update particles & camera smoothly at display refresh rate
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    this.particles[i].update(frameDt);
+                    if (this.particles[i].life <= 0) this.particles.splice(i, 1);
+                }
+                this.camera.follow(this.player, frameDt);
+
+                // Update Debug Inspector Telemetry
+                if (this.debugMode) {
+                    this._updateDebugTelemetry();
+                }
+
+                this.render();
+                this.input.endFrame();
+                requestAnimationFrame((t) => this.loop(t));
+            }
+
+            start() {
+                requestAnimationFrame((t) => this.loop(t));
+            }
+
+            // --- UI & Inspector Bindings ---
+            _bindUI() {
+                document.getElementById('btn-restart').addEventListener('click', () => this.loadDemoLevel());
+                document.getElementById('btn-banner-restart').addEventListener('click', () => this.loadDemoLevel());
+                document.getElementById('btn-debug').addEventListener('click', () => this._toggleDebugPanel());
+
+                // Physics Parameter Sliders
+                const bindSlider = (sliderId, labelId, configKey) => {
+                    const slider = document.getElementById(sliderId);
+                    const label = document.getElementById(labelId);
+                    slider.addEventListener('input', (e) => {
+                        const val = Number(e.target.value);
+                        this.config[configKey] = val;
+                        label.textContent = val;
+                    });
+                };
+
+                bindSlider('slider-gravity', 'val-gravity', 'gravity');
+                bindSlider('slider-jump', 'val-jump', 'jumpForce');
+                bindSlider('slider-speed', 'val-speed', 'moveSpeed');
+
+                document.getElementById('btn-reset-params').addEventListener('click', () => {
+                    Object.assign(this.config, this.defaultConfig);
+                    document.getElementById('slider-gravity').value = this.config.gravity;
+                    document.getElementById('val-gravity').textContent = this.config.gravity;
+                    document.getElementById('slider-jump').value = this.config.jumpForce;
+                    document.getElementById('val-jump').textContent = this.config.jumpForce;
+                    document.getElementById('slider-speed').value = this.config.moveSpeed;
+                    document.getElementById('val-speed').textContent = this.config.moveSpeed;
+                });
+            }
+
+            _toggleDebugPanel() {
+                this.debugMode = !this.debugMode;
+                const panel = document.getElementById('debug-panel');
+                const btn = document.getElementById('btn-debug');
+                panel.classList.toggle('hidden', !this.debugMode);
+                btn.classList.toggle('border-purple-500', this.debugMode);
+            }
+
+            _updateScoreHUD() {
+                document.getElementById('hud-score').textContent = `${this.score} / ${this.totalGems}`;
+            }
+
+            _updateHUD(text, colorClass) {
+                const el = document.getElementById('hud-status');
+                el.textContent = text;
+                el.className = `font-mono text-sm font-semibold ${colorClass}`;
+            }
+
+            _updateDebugTelemetry() {
+                document.getElementById('dbg-pos').textContent = `${Math.round(this.player.pos.x)}, ${Math.round(this.player.pos.y)}`;
+                document.getElementById('dbg-vel').textContent = `${Math.round(this.player.vel.x)}, ${Math.round(this.player.vel.y)}`;
+                const groundedEl = document.getElementById('dbg-grounded');
+                groundedEl.textContent = String(this.player.grounded);
+                groundedEl.className = this.player.grounded ? 'text-emerald-400' : 'text-rose-400';
+                document.getElementById('dbg-coyote').textContent = `${this.player.coyoteTimer.toFixed(2)}s`;
+                document.getElementById('dbg-buffer').textContent = `${this.player.jumpBufferTimer.toFixed(2)}s`;
+            }
+        }
+
+        // Boot Engine on Window Load
+        window.onload = () => {
+            const canvas = document.getElementById('gameCanvas');
+            const engine = new PlatformerEngine(canvas);
+            engine.start();
         };
-        ctx.moveTo(0, 0);
-        ctx.lineTo(200, 100);
-        ctx.stroke();
     </script>
+</body>
 </html>
