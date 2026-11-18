@@ -4,9 +4,18 @@
     <script>
         var c = document.getElementById("main");
         var ctx = c.getContext("2d");
+        var pos = 0
         ctx.moveTo(0, 0);
-        ctx.lineTo(200, 101);
+        ctx.lineTo(200 + var pos, 100);
         ctx.stroke();
+        document.addEventListener("keydown", (event) => {
+            console.log(`Key pressed: ${event.key}`);
 
+            if (event.key === "Enter") {
+                console.log("Enter key was pressed!");}
+            if (event.key === "Escape") {
+                console.log("Escape key was pressed!");
+  
+};
     </script>
 </html>
