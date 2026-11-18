@@ -5,6 +5,14 @@
         var c = document.getElementById("main");
         var ctx = c.getContext("2d");
         var pos = 0
+        const icon = new Image();
+        sprite.src = 'icon.png';
+
+        sprite.onload = () => {
+        ctx.drawImage(icon, 100, 150);
+
+        ctx.drawImage(icon, 100, 150, 64, 64);
+    };
         ctx.moveTo(0, 0);
         ctx.lineTo(200, 100);
         ctx.stroke();
